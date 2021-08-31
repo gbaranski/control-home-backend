@@ -3,12 +3,10 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, thiserror::Error)]
 pub enum Error {
-    #[error("token blacklist error: {0}")]
-    TokenBlacklistError(String),
-
-    #[error("database error: {0}")]
-    DatabaseError(String),
-
+    #[error("clerk: {0}")]
+    Clerk(String),
+    #[error("mailer: {0}")]
+    Mailer(String),
     #[error("other: {0}")]
     Other(String),
 }

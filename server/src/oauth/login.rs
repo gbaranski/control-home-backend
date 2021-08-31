@@ -1,4 +1,3 @@
-use crate::verify_password;
 use crate::State;
 use axum::extract::Extension;
 use axum::extract::Form;
@@ -6,7 +5,6 @@ use axum::extract::Query;
 use chrono::Duration;
 use chrono::Utc;
 use houseflow_types::auth::login::Request;
-use houseflow_types::errors::InternalError;
 use houseflow_types::token::AuthorizationCode;
 use houseflow_types::token::AuthorizationCodePayload;
 
@@ -30,13 +28,10 @@ pub async fn handle(
     validator::Validate::validate(&request)
         .map_err(|err| Error::InvalidRequest(Some(err.to_string())))?;
     let user = state
-        .database
+        .config
         .get_user_by_email(&request.email)
-        .map_err(|err| Error::Internal(InternalError::DatabaseError(err.to_string())))?
         .ok_or_else(|| Error::InvalidGrant(Some(String::from("user not found"))))?;
 
-    verify_password(&user.password_hash, &request.password)
-        .map_err(|_| Error::InvalidRequest(Some(String::from("invalid password"))))?;
     let google_config = state.config.google.as_ref().unwrap();
     if *query.client_id != *google_config.client_id {
         return Err(Error::InvalidClient(Some(String::from(

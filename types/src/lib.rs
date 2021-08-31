@@ -2,6 +2,7 @@ mod common;
 mod device;
 mod user;
 
+pub mod code;
 pub mod errors;
 
 #[cfg(feature = "auth")]
@@ -52,9 +53,10 @@ impl ClientType {
 #[cfg(feature = "token")]
 pub mod serde_token_expiration {
     use chrono::Duration;
+    use serde::de;
     use serde::de::Visitor;
-    use serde::de::{self};
     use serde::ser;
+
     pub struct TokenExpirationVisitor;
 
     impl<'de> Visitor<'de> for TokenExpirationVisitor {

@@ -3,7 +3,6 @@ members = [
   "api",
   "cli",
   "config",
-  "db",
   "devices/virtual",
   "devices/rpi",
   "google-smart-home",

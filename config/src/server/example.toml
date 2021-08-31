@@ -15,24 +15,29 @@ authorization-code-key = "some-authorization-code-key"
 certificate = "/etc/certificate"  # e.g /etc/letsencrypt/live/example.com/fullchain.pem
 private-key = "/etc/private-key"  # e.g /etc/letsencrypt/live/example.com/privkey.pem
 
+[email]
+provider = "aws-ses"
+region = "eu-central-1"
+from = "houseflow@gbaranski.com"
+
 # Google provider configuration. If not defined, Google Home integration will be disabled.
 [google]
 client-id = "google-client-id"     # Actions Console -> Account Linking -> Client ID.
 client-secret = "google-client-secret" # Actions Console -> Account Linking -> Client Secret. 
 project-id = "google-project-id"   # Project ID set during creation.
 
-# Define a structure.
+# Define a new structure.
 [[structures]]
 id = "bd7feab5033940e296ed7fcdc700ba65" # Unique 16 byte hex-encoded structure identifier.
 name = "Zukago"                         # Name of the structure. 
 
-# Define a room.
+# Define a new room.
 [[rooms]]
 id = "baafebaa0708441782cf17470dd98392"           # Unique 16 byte hex-encoded room identifier.
 structure-id = "bd7feab5033940e296ed7fcdc700ba65" # A reference to the structure `id` field.
 name = "Bedroom"                                  # Name of the room.
 
-# Define a device.
+# Define a new device.
 [[devices]]
 id = "aa9936b052cb4718b77c87961d14c79c"       # Unique 16 byte hex-encoded device identifier.
 room-id = "baafebaa0708441782cf17470dd98392"  # A reference to the room `id` field.
@@ -45,6 +50,13 @@ model = "alice"                               # Model name of the device
 hw-version = "0.1.0"                          # Hardware version of the device
 sw-version = "0.1.0"                          # Software version of the device
 attributes = {}                               # Aligned with per-trait attributes described in each trait schema reference.
+
+# Define a new user.
+[[users]]
+id = "861ccceaa3e349138ce2498768dbfe09"
+username = "gbaranski"
+email = "root@gbaranski.com"
+admin = false
 
 # Define a new permission.
 [[permissions]]

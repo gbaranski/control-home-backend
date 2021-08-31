@@ -64,13 +64,9 @@ impl axum::extract::FromRequest<Body> for RefreshToken {
     async fn from_request(
         req: &mut axum::extract::RequestParts<Body>,
     ) -> Result<Self, Self::Rejection> {
-        let token: Token<RefreshTokenPayload> =
-            from_request(req, |secrets| &secrets.refresh_key).await?;
-        let state: &State = req.extensions().unwrap().get().unwrap();
-        if state.token_blacklist.exists(&token.tid).await? {
-            return Err(AuthError::RefreshTokenBlacklisted.into());
-        }
-        Ok(Self(token))
+        Ok(Self(
+            from_request(req, |secrets| &secrets.refresh_key).await?,
+        ))
     }
 }
 

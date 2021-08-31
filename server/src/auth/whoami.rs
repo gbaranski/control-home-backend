@@ -14,8 +14,8 @@ pub async fn handle(
     Json(_request): Json<Request>,
 ) -> Result<Json<Response>, ServerError> {
     let user = state
-        .database
-        .get_user(&user_id)?
+        .config
+        .get_user(&user_id)
         .ok_or(AuthError::UserNotFound)?;
 
     tracing::info!(username = %user.username, email = %user.email);
@@ -30,12 +30,19 @@ pub async fn handle(
 mod tests {
     use crate::test_utils::*;
     use axum::Json;
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn valid() {
-        let state = get_state();
         let user = get_user();
-        state.database.add_user(&user).unwrap();
+        let state = get_state(
+            &mpsc::unbounded_channel().0,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![user.clone()],
+        );
         let Json(response) = super::handle(
             state.clone(),
             crate::extractors::UserID(user.id),

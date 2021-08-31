@@ -15,6 +15,13 @@ use std::str::FromStr;
 
 pub struct DeviceCredentials(DeviceID, String);
 
+fn verify_password(hash: &str, password: &str) -> Result<(), AuthError> {
+    match argon2::verify_encoded(hash, password.as_bytes()).unwrap() {
+        true => Ok(()),
+        false => Err(AuthError::InvalidPassword),
+    }
+}
+
 #[async_trait]
 impl axum::extract::FromRequest<Body> for DeviceCredentials {
     type Rejection = ServerError;
@@ -49,7 +56,7 @@ pub async fn handle(
         .config
         .get_device(&device_id)
         .ok_or(AuthError::DeviceNotFound)?;
-    crate::verify_password(device.password_hash.as_ref().unwrap(), &device_password)?;
+    verify_password(device.password_hash.as_ref().unwrap(), &device_password)?;
     if state.sessions.contains_key(&device.id) {
         return Err(LighthouseError::AlreadyConnected.into());
     }

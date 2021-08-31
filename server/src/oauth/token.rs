@@ -115,7 +115,6 @@ async fn on_authorization_code_grant(state: State, code: String) -> Result<Respo
         RefreshTokenPayload {
             sub: code.sub.clone(),
             exp: None,
-            tid: rand::random(),
         },
     );
 

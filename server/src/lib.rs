@@ -1,44 +1,28 @@
 mod extractors;
 
-mod blacklist;
-
 mod auth;
+pub mod clerk;
 mod fulfillment;
 mod lighthouse;
+pub mod mailer;
 mod oauth;
-
-pub use blacklist::sled::TokenBlacklist as SledTokenBlacklist;
-pub use blacklist::TokenBlacklist;
 
 use axum::AddExtensionLayer;
 use axum::Router;
 use dashmap::DashMap;
 use houseflow_config::server::Config;
-use houseflow_db::Database;
-use houseflow_types::errors::AuthError;
 use houseflow_types::DeviceID;
-
-pub(crate) fn get_password_salt() -> [u8; 16] {
-    rand::random()
-}
-
-pub(crate) fn verify_password(hash: &str, password: &str) -> Result<(), AuthError> {
-    match argon2::verify_encoded(hash, password.as_bytes()).unwrap() {
-        true => Ok(()),
-        false => Err(AuthError::InvalidPassword),
-    }
-}
+use mailer::Mailer;
+use std::sync::Arc;
 
 async fn health_check() -> &'static str {
     "I'm alive!"
 }
 
-use std::sync::Arc;
-
 #[derive(Clone)]
 pub struct State {
-    pub token_blacklist: Arc<dyn TokenBlacklist>,
-    pub database: Arc<dyn Database>,
+    pub clerk: Arc<dyn clerk::Clerk>,
+    pub mailer: Arc<dyn Mailer>,
     pub config: Arc<Config>,
     pub sessions: DashMap<DeviceID, lighthouse::Session>,
 }
@@ -109,8 +93,6 @@ pub fn app(state: State) -> Router<axum::routing::BoxRoute> {
             "/auth",
             Router::new()
                 .route("/login", post(auth::login::handle))
-                .route("/logout", post(auth::logout::handle))
-                .route("/register", post(auth::register::handle))
                 .route("/refresh", post(auth::refresh::handle))
                 .route("/whoami", get(auth::whoami::handle))
                 .boxed(),
@@ -161,31 +143,36 @@ pub fn app(state: State) -> Router<axum::routing::BoxRoute> {
 
 #[cfg(test)]
 mod test_utils {
-    use super::SledTokenBlacklist;
+    use crate::clerk::sled::Clerk;
+
+    use super::mailer::fake::Mailer as FakeMailer;
     use super::State;
     use axum::extract;
     use houseflow_config::defaults;
     use houseflow_config::server::Config;
+    use houseflow_config::server::Email;
+    use houseflow_config::server::EmailAwsSes;
     use houseflow_config::server::Network;
     use houseflow_config::server::Secrets;
-    use houseflow_db::sqlite::Database as SqliteDatabase;
+    use houseflow_types::code::VerificationCode;
     use houseflow_types::Device;
     use houseflow_types::DeviceType;
+    use houseflow_types::Permission;
     use houseflow_types::Room;
     use houseflow_types::Structure;
     use houseflow_types::User;
     use houseflow_types::UserID;
     use std::sync::Arc;
+    use tokio::sync::mpsc;
 
-    pub const PASSWORD: &str = "SomePassword";
-    pub const PASSWORD_INVALID: &str = "SomeOtherPassword";
-    pub const PASSWORD_HASH: &str = "$argon2i$v=19$m=4096,t=3,p=1$Zcm15qxfZSBqL9K6S9G5mNIGgz7qmna7TlPPN+t9mqA$ECoZv8pF6Ew6gjh8b9d2oe4QtQA3DO5PIfuWvK2h3OU";
-
-    pub fn get_state() -> extract::Extension<State> {
-        let database = SqliteDatabase::new_in_memory().unwrap();
-        let token_blacklist_path =
-            std::env::temp_dir().join(format!("houseflow-server_test-{}", rand::random::<u32>()));
-        let token_blacklist = SledTokenBlacklist::new_temporary(token_blacklist_path).unwrap();
+    pub fn get_state(
+        tx: &mpsc::UnboundedSender<VerificationCode>,
+        structures: Vec<Structure>,
+        rooms: Vec<Room>,
+        devices: Vec<Device>,
+        permissions: Vec<Permission>,
+        users: Vec<User>,
+    ) -> extract::Extension<State> {
         let config = Config {
             network: Network {
                 address: defaults::server_address(),
@@ -196,24 +183,31 @@ mod test_utils {
                 authorization_code_key: String::from("authorization-code-key"),
             },
             tls: None,
+            email: Email::AwsSes(EmailAwsSes {
+                region: Default::default(),
+                from: String::from("houseflow@gbaranski.com"),
+            }),
             google: Some(houseflow_config::server::Google {
                 client_id: String::from("client-id"),
                 client_secret: String::from("client-secret"),
                 project_id: String::from("project-id"),
             }),
-            structures: vec![],
-            rooms: vec![],
-            devices: vec![],
-            permissions: vec![],
+            structures,
+            rooms,
+            devices,
+            users,
+            permissions,
         };
 
         let sessions = Default::default();
+        let clerk_path =
+            std::env::temp_dir().join(format!("houseflow-clerk-test-{}", rand::random::<u32>()));
 
         extract::Extension(State {
-            database: Arc::new(database),
-            token_blacklist: Arc::new(token_blacklist),
             config: Arc::new(config),
+            mailer: Arc::new(FakeMailer::new(tx.clone())),
             sessions,
+            clerk: Arc::new(Clerk::new_temporary(clerk_path).unwrap()),
         })
     }
 
@@ -223,7 +217,7 @@ mod test_utils {
             id: id.clone(),
             username: format!("john-{}", id.clone()),
             email: format!("john-{}@example.com", id.clone()),
-            password_hash: PASSWORD_HASH.into(),
+            admin: false,
         }
     }
 
@@ -251,7 +245,7 @@ mod test_utils {
         Device {
             id: rand::random(),
             room_id: room.id.clone(),
-            password_hash: Some(PASSWORD_HASH.into()),
+            password_hash: Some("$argon2i$v=19$m=4096,t=3,p=1$Zcm15qxfZSBqL9K6S9G5mNIGgz7qmna7TlPPN+t9mqA$ECoZv8pF6Ew6gjh8b9d2oe4QtQA3DO5PIfuWvK2h3OU".into()),
             device_type: DeviceType::Gate,
             traits: vec![],
             name: String::from("SuperTestingGate"),

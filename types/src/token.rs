@@ -1,5 +1,4 @@
 use crate::errors::TokenError as Error;
-use crate::Credential;
 use crate::UserID;
 use chrono::DateTime;
 use chrono::Utc;
@@ -7,8 +6,6 @@ use serde::de;
 use serde::ser;
 use serde::Deserialize;
 use serde::Serialize;
-
-pub type RefreshTokenID = Credential<16>;
 
 pub type Signature = Vec<u8>;
 
@@ -58,7 +55,6 @@ pub type AuthorizationCode = Token<AuthorizationCodePayload>;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessTokenPayload {
     pub sub: UserID,
-
     #[serde(with = "chrono::serde::ts_seconds")]
     pub exp: DateTime<Utc>,
 }
@@ -66,16 +62,13 @@ pub struct AccessTokenPayload {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthorizationCodePayload {
     pub sub: UserID,
-
     #[serde(with = "chrono::serde::ts_seconds")]
     pub exp: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RefreshTokenPayload {
-    pub tid: RefreshTokenID,
     pub sub: UserID,
-
     #[serde(with = "chrono::serde::ts_seconds_option")]
     pub exp: Option<DateTime<Utc>>,
 }
@@ -303,7 +296,6 @@ mod tests {
             let payload = RefreshTokenPayload {
                 sub: random(),
                 exp: Some(Utc::now().round_subsecs(0) + chrono::Duration::hours(1)),
-                tid: random(),
             };
             let token = RefreshToken::new(&key, payload);
             let encoded = token.encode();
@@ -317,7 +309,6 @@ mod tests {
             let payload = RefreshTokenPayload {
                 sub: random(),
                 exp: None,
-                tid: random(),
             };
             let token = RefreshToken::new(&key, payload);
             let encoded = token.encode();
@@ -332,7 +323,6 @@ mod tests {
             let payload = RefreshTokenPayload {
                 sub: random(),
                 exp: Some(Utc::now() - expired_by),
-                tid: random(),
             };
             let token = Token::new(&key, payload);
             let encoded = token.encode();
@@ -352,7 +342,6 @@ mod tests {
             let payload = RefreshTokenPayload {
                 sub: random(),
                 exp: Some(Utc::now().round_subsecs(0) + chrono::Duration::hours(1)),
-                tid: random(),
             };
             let token = RefreshToken::new(&valid_key, payload);
             let encoded = token.encode();

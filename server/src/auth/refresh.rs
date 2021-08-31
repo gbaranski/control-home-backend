@@ -38,20 +38,26 @@ pub async fn handle(
 mod tests {
     use crate::test_utils::*;
     use axum::Json;
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn valid() {
-        let state = get_state();
         let user = get_user();
+        let state = get_state(
+            &mpsc::unbounded_channel().0,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![user.clone()],
+        );
         let refresh_token = houseflow_types::token::RefreshToken::new(
             state.config.secrets.refresh_key.as_bytes(),
             houseflow_types::token::RefreshTokenPayload {
-                tid: rand::random(),
                 sub: user.id.clone(),
                 exp: None,
             },
         );
-        state.database.add_user(&user).unwrap();
         let Json(response) = super::handle(
             state.clone(),
             crate::extractors::RefreshToken(refresh_token.clone()),

@@ -3,6 +3,7 @@ use houseflow_types::Device;
 use houseflow_types::Permission;
 use houseflow_types::Room;
 use houseflow_types::Structure;
+use houseflow_types::User;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -17,7 +18,9 @@ pub struct Config {
     /// Path to the TLS configuration
     #[serde(default)]
     pub tls: Option<Tls>,
-    /// Configuration of the Google 3rd party service
+    /// Configuration of the email
+    pub email: Email,
+    /// Configuration of the Google 3rd party client
     #[serde(default)]
     pub google: Option<Google>,
     /// Structures
@@ -29,6 +32,9 @@ pub struct Config {
     /// Devices
     #[serde(default)]
     pub devices: Vec<Device>,
+    /// Devices
+    #[serde(default)]
+    pub users: Vec<User>,
     /// User -> Structure permission
     #[serde(default)]
     pub permissions: Vec<Permission>,
@@ -47,10 +53,8 @@ pub struct Network {
 pub struct Secrets {
     /// Key used to sign refresh tokens. Must be secret and should be farily random.
     pub refresh_key: String,
-
     /// Key used to sign access tokens. Must be secret and should be farily random.
     pub access_key: String,
-
     /// Key used to sign authorization codes. Must be secret and should be farily random.
     pub authorization_code_key: String,
 }
@@ -60,20 +64,30 @@ pub struct Secrets {
 pub struct Tls {
     /// Path to the TLS certificate
     pub certificate: std::path::PathBuf,
-
     /// Path to the TLS private key
     pub private_key: std::path::PathBuf,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "provider", rename_all = "kebab-case")]
+pub enum Email {
+    AwsSes(EmailAwsSes),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct EmailAwsSes {
+    pub region: rusoto_core::Region,
+    pub from: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Google {
-    ///  OAuth2 Client ID identifying Google to your service
+    /// OAuth2 Client ID identifying Google to your service
     pub client_id: String,
-
     /// OAuth2 Client Secret assigned to the Client ID which identifies Google to you
     pub client_secret: String,
-
     /// Google Project ID
     pub project_id: String,
 }
@@ -150,6 +164,17 @@ use houseflow_types::RoomID;
 use houseflow_types::UserID;
 
 impl Config {
+    pub fn get_user(&self, user_id: &UserID) -> Option<User> {
+        self.users.iter().find(|user| user.id == *user_id).cloned()
+    }
+
+    pub fn get_user_by_email(&self, user_email: &str) -> Option<User> {
+        self.users
+            .iter()
+            .find(|user| user.email == *user_email)
+            .cloned()
+    }
+
     pub fn get_device(&self, device_id: &DeviceID) -> Option<Device> {
         self.devices
             .iter()
@@ -208,6 +233,8 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::Config;
+    use super::Email;
+    use super::EmailAwsSes;
     use super::Google;
     use super::Network;
     use super::Secrets;
@@ -241,6 +268,10 @@ mod tests {
                 certificate: std::path::PathBuf::from_str("/etc/certificate").unwrap(),
                 private_key: std::path::PathBuf::from_str("/etc/private-key").unwrap(),
             }),
+            email: Email::AwsSes(EmailAwsSes {
+                region: rusoto_core::Region::EuCentral1,
+                from: String::from("houseflow@gbaranski.com")
+            }),
             google: Some(Google {
                 client_id: String::from("google-client-id"),
                 client_secret: String::from("google-client-secret"),
@@ -272,6 +303,14 @@ mod tests {
                     attributes: Default::default(),
                 }
             ].to_vec(),
+            users: [
+                User {
+                    id: UserID::from_str("861ccceaa3e349138ce2498768dbfe09").unwrap(),
+                    username: String::from("gbaranski"),
+                    email: String::from("root@gbaranski.com"),
+                    admin: false,
+                }
+            ].to_vec(),
             permissions: [
                 Permission {
                     structure_id: StructureID::from_str("bd7feab5033940e296ed7fcdc700ba65").unwrap(),
@@ -282,6 +321,7 @@ mod tests {
         };
         let config = toml::from_str::<Config>(include_str!("example.toml")).unwrap();
         assert_eq!(config, expected);
+        crate::Config::validate(&config).unwrap();
     }
 
     #[test]
@@ -290,13 +330,13 @@ mod tests {
             id: rand::random(),
             username: String::from("gbaranski"),
             email: String::from("root@gbaranski.com"),
-            password_hash: String::from("user-auth-password"),
+            admin: false,
         };
         let user_unauth = User {
             id: rand::random(),
             username: String::from("stanbar"),
             email: String::from("stanbar@gbaranski.com"),
-            password_hash: String::from("user-unauth-password"),
+            admin: false,
         };
         let structure_auth = Structure {
             id: rand::random(),
@@ -382,6 +422,10 @@ mod tests {
             network: Default::default(),
             secrets: rand::random(),
             tls: Default::default(),
+            email: Email::AwsSes(EmailAwsSes {
+                region: rusoto_core::Region::EuCentral1,
+                from: String::new(),
+            }),
             google: Default::default(),
             structures: [structure_auth.clone(), structure_unauth.clone()].to_vec(),
             rooms: [
@@ -398,6 +442,7 @@ mod tests {
                 device_unauth_two.clone(),
             ]
             .to_vec(),
+            users: [user_auth.clone(), user_unauth.clone()].to_vec(),
             permissions: [
                 Permission {
                     structure_id: structure_auth.id.clone(),
